@@ -129,35 +129,59 @@ export class AppComponent {
     this.chunkCoords.set({x: cx, y: cy});
     this.currentChunk.set(chunk);
     
-    // If we have a specific entry point (from walking), use it. 
-    // Otherwise keep current pos (start game) but validate it.
+    // Determine spawn point
+    let sx = 5, sy = 4;
     if (entryPoint) {
-      this.playerPos.set(entryPoint);
-      // FORCE VALIDITY: Ensure the tile the player landed on is walkable.
-      // This prevents getting stuck in a wall or dying instantly on a hazard.
-      // 1 = Wall, 2 = Hazard
-      const startCell = Number(chunk.layout[entryPoint.y][entryPoint.x]);
-      if (startCell === 1 || startCell === 2) {
-        chunk.layout[entryPoint.y][entryPoint.x] = 0;
-      }
-    } else {
-       // On startup, ensure center is safe
-       if (Number(chunk.layout[4][5]) !== 0) {
-         chunk.layout[4][5] = 0;
-       }
-       this.playerPos.set({x: 5, y: 4});
+      sx = entryPoint.x;
+      sy = entryPoint.y;
     }
 
+    // CRITICAL: Ensure the player's spawn point is safe.
+    // This modifies the chunk data permanently to create a door/clearing.
+    this.ensureSafeSpawn(chunk, sx, sy, !entryPoint);
+
+    this.playerPos.set({x: sx, y: sy});
     this.message.set(chunk.flavorText);
     this.gameState.set('PLAYING');
+  }
+
+  /**
+   * Modifies the chunk layout to guarantee the spawn point is walkable.
+   * If it's a fresh start (no entryPoint), it clears a larger area to prevent
+   * 1x1 enclosed "coffins".
+   */
+  private ensureSafeSpawn(chunk: WorldChunk, x: number, y: number, isStart = false) {
+    if (!this.isValidIdx(x, y, chunk)) return;
+
+    // 1. Force exact tile to Floor (0)
+    chunk.layout[y][x] = 0;
+
+    // 2. If this is the game start, clear a cross shape so the player can move
+    if (isStart) {
+       const neighbors = [
+         {dx: 0, dy: -1}, {dx: 0, dy: 1}, 
+         {dx: -1, dy: 0}, {dx: 1, dy: 0}
+       ];
+       for (const n of neighbors) {
+         const nx = x + n.dx;
+         const ny = y + n.dy;
+         if (this.isValidIdx(nx, ny, chunk)) {
+            chunk.layout[ny][nx] = 0;
+         }
+       }
+    }
+  }
+
+  private isValidIdx(x: number, y: number, chunk: WorldChunk): boolean {
+    return x >= 0 && x < chunk.width && y >= 0 && y < chunk.height;
   }
 
   handleInput(key: string) {
     this.initAudio();
 
-    // Simple debounce to prevent double-moves from sensitive touch inputs
+    // Debounce to prevent double-moves
     const now = Date.now();
-    if (now - this.lastInputTime < 100) return; 
+    if (now - this.lastInputTime < 150) return; 
     this.lastInputTime = now;
 
     if (this.gameState() === 'PLAYING') {
@@ -210,6 +234,12 @@ export class AppComponent {
     }
 
     // --- Local Movement Check ---
+    // Ensure we are accessing a valid array index before checking content
+    if (!chunk.layout[newY] || chunk.layout[newY][newX] === undefined) {
+      // Fallback for glitchy map data
+      return;
+    }
+
     const cellContent = Number(chunk.layout[newY][newX]);
 
     // 1 = Wall

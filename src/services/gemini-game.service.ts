@@ -35,13 +35,16 @@ export class GeminiGameService {
     
     Rules:
     - The layout must be a ${height}x${width} integer array.
-    - 0: Walkable Floor
-    - 1: Wall / Obstacle (Tree, Rock, Building)
-    - 2: Hazard (Spikes, Lava) - Use EXTREMELY sparingly. Most chunks should have 0 hazards.
-    - 3: Treasure/Loot (Coins, Items) - Place 1 to 3 treasures in hard to reach spots.
+    - 0: Walkable Floor (Empty space). MUST be the majority.
+    - 1: Wall / Obstacle (Tree, Rock, Building).
+    - 2: Hazard (Spikes, Lava) - Use EXTREMELY sparingly (max 1 per chunk).
+    - 3: Treasure/Loot (Coins, Items) - Place 1 to 3 treasures.
     
-    - Connectivity: This is an open world. Do not seal off the edges completely. The player must be able to traverse through this chunk to neighbor chunks.
-    - Create organic shapes, rooms, or paths.
+    CRITICAL DESIGN RULES:
+    1. The map MUST be traversable. Do NOT create closed-off rooms that are impossible to enter or exit.
+    2. If this is chunk (0,0), the center (5,4) MUST be open space (0) and surrounded by empty space.
+    3. Ensure at least 2 exits exist on the edges of the map.
+    4. Avoid single-tile corridors; prefer open clearings and forests.
     `;
 
     const schema: Schema = {
@@ -68,8 +71,7 @@ export class GeminiGameService {
         config: {
           responseMimeType: 'application/json',
           responseSchema: schema,
-          thinkingConfig: { thinkingBudget: 512 }, // Lower thinking for faster world gen
-          maxOutputTokens: 2048, 
+          // thinkingConfig removed to prevent 500 XHR errors on proxy
         }
       });
 
@@ -80,7 +82,7 @@ export class GeminiGameService {
       const json = JSON.parse(text);
       
       // Basic validation
-      if (!json.layout || json.layout.length !== height) {
+      if (!json.layout || !Array.isArray(json.layout) || json.layout.length !== height) {
         throw new Error('Invalid grid dimensions generated');
       }
 
@@ -106,7 +108,7 @@ export class GeminiGameService {
         [0,0,1,0,0,0,0,1,0,0],
         [1,1,1,0,0,0,0,1,1,1],
         [0,0,0,0,3,3,0,0,0,0],
-        [0,0,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,0,0,0], // Center row clear
         [0,0,0,0,0,0,0,0,0,0],
         [1,1,1,0,0,0,0,1,1,1],
         [0,0,1,0,0,0,0,1,0,0],
