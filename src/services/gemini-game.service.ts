@@ -1,12 +1,20 @@
 import { Injectable } from '@angular/core';
 import { GoogleGenAI, Schema, Type } from '@google/genai';
 
+export interface EnemySpawn {
+  type: 'SLIME' | 'RAT' | 'SKELETON' | 'ROBOT' | 'GHOST' | 'ALIEN';
+  x: number;
+  y: number;
+  name: string;
+}
+
 export interface WorldChunk {
-  layout: number[][]; // 0=Floor, 1=Wall, 2=Hazard, 3=Treasure
+  layout: number[][]; // 0=Floor, 1=Wall, 2=Hazard, 3=Treasure, 4=DroppedItem
   width: number;
   height: number;
   biomeName: string;
   flavorText: string;
+  enemies: EnemySpawn[];
 }
 
 @Injectable({
@@ -28,23 +36,18 @@ export class GeminiGameService {
     Grid Size: ${width}x${height}.
     
     Context:
-    - As X increases, the world gets more futuristic/technological.
-    - As X decreases, the world gets more ancient/ruined.
-    - As Y increases, the biome gets colder/snowy.
-    - As Y decreases, the biome gets hotter/volcanic.
+    - X > 0: Sci-fi/Future. X < 0: Fantasy/Ancient.
+    - Y > 0: Cold/Snow. Y < 0: Hot/Magma.
     
     Rules:
-    - The layout must be a ${height}x${width} integer array.
-    - 0: Walkable Floor (Empty space). MUST be the majority.
-    - 1: Wall / Obstacle (Tree, Rock, Building).
-    - 2: Hazard (Spikes, Lava) - Use EXTREMELY sparingly (max 1 per chunk).
-    - 3: Treasure/Loot (Coins, Items) - Place 1 to 3 treasures.
-    
-    CRITICAL DESIGN RULES:
-    1. The map MUST be traversable. Do NOT create closed-off rooms that are impossible to enter or exit.
-    2. If this is chunk (0,0), the center (5,4) MUST be open space (0) and surrounded by empty space.
-    3. Ensure at least 2 exits exist on the edges of the map.
-    4. Avoid single-tile corridors; prefer open clearings and forests.
+    - Layout: ${height} rows, ${width} cols. 0=Floor, 1=Wall, 2=Hazard (Rare), 3=Treasure (1-3).
+    - Enemies: List 1-3 enemies. 
+      - Ancient/Fantasy: SLIME, RAT, SKELETON, GHOST.
+      - Future/SciFi: ROBOT, ALIEN, DRONE (use RAT stats).
+    - CRITICAL: The map MUST be traversable. Do NOT generate a closed box or room. 
+    - CRITICAL: Use Walls (1) sparsely. Create open fields or maze-like paths, but never fully enclose an area.
+    - Edges should be mostly open to allow travel to neighboring chunks.
+    - If chunk (0,0): Center (5,4) MUST be empty (0).
     `;
 
     const schema: Schema = {
@@ -56,12 +59,24 @@ export class GeminiGameService {
             type: Type.ARRAY,
             items: { type: Type.INTEGER },
           },
-          description: `A 2D grid of integers. Rows: ${height}, Cols: ${width}.`,
         },
-        biomeName: { type: Type.STRING, description: "Name of this area (e.g. 'Frozen Waste', 'Neon City Outskirts')" },
-        flavorText: { type: Type.STRING, description: "One sentence description of the atmosphere." }
+        biomeName: { type: Type.STRING },
+        flavorText: { type: Type.STRING },
+        enemies: {
+          type: Type.ARRAY,
+          items: {
+             type: Type.OBJECT,
+             properties: {
+                type: { type: Type.STRING, enum: ['SLIME', 'RAT', 'SKELETON', 'ROBOT', 'GHOST', 'ALIEN'] },
+                x: { type: Type.INTEGER },
+                y: { type: Type.INTEGER },
+                name: { type: Type.STRING }
+             },
+             required: ['type', 'x', 'y', 'name']
+          }
+        }
       },
-      required: ['layout', 'biomeName', 'flavorText']
+      required: ['layout', 'biomeName', 'flavorText', 'enemies']
     };
 
     try {
@@ -71,27 +86,21 @@ export class GeminiGameService {
         config: {
           responseMimeType: 'application/json',
           responseSchema: schema,
-          // thinkingConfig removed to prevent 500 XHR errors on proxy
         }
       });
 
       let text = response.text || '{}';
-      // Sanitize: Remove markdown code block syntax if present (case insensitive)
       text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
 
       const json = JSON.parse(text);
       
-      // Basic validation
-      if (!json.layout || !Array.isArray(json.layout) || json.layout.length !== height) {
-        throw new Error('Invalid grid dimensions generated');
-      }
-
       return {
         width,
         height,
         layout: json.layout,
         biomeName: json.biomeName || 'Unknown Sector',
-        flavorText: json.flavorText || 'Static fills the air...'
+        flavorText: json.flavorText || 'Static fills the air...',
+        enemies: json.enemies || []
       };
     } catch (e) {
       console.error("Gemini generation failed", e);
@@ -108,14 +117,17 @@ export class GeminiGameService {
         [0,0,1,0,0,0,0,1,0,0],
         [1,1,1,0,0,0,0,1,1,1],
         [0,0,0,0,3,3,0,0,0,0],
-        [0,0,0,0,0,0,0,0,0,0], // Center row clear
+        [0,0,0,0,0,0,0,0,0,0],
         [0,0,0,0,0,0,0,0,0,0],
         [1,1,1,0,0,0,0,1,1,1],
         [0,0,1,0,0,0,0,1,0,0],
         [0,0,1,0,0,0,0,1,0,0],
       ],
       biomeName: `Glitch Sector ${x},${y}`,
-      flavorText: "The simulation is unstable here."
+      flavorText: "The simulation is unstable here.",
+      enemies: [
+        { type: 'SLIME', x: 2, y: 2, name: 'Glitch Slime' }
+      ]
     };
   }
 }
