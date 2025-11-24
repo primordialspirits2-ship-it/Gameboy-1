@@ -1,27 +1,29 @@
 
-
-<main class="h-screen w-screen flex flex-col overflow-hidden font-sans select-none touch-none"
+<main class="fixed inset-0 flex flex-col overflow-hidden font-sans select-none touch-none h-[100dvh] w-screen"
       [class.bg-neutral-900]="!isFullScreen()"
       [class.bg-black]="isFullScreen()">
 
   <!-- Full Screen Toggle (Floating) -->
-  <button class="absolute top-2 right-2 z-50 text-white/40 hover:text-white p-2 transition-colors rounded-full bg-black/20"
-          (click)="toggleFullScreen()">
+  <button type="button" 
+          class="absolute top-2 right-2 z-50 text-white/40 hover:text-white p-2 transition-colors rounded-full bg-black/20"
+          (click)="toggleFullScreen()"
+          [attr.aria-label]="isFullScreen() ? 'Exit Full Screen' : 'Enter Full Screen'">
      @if(isFullScreen()) {
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
      } @else {
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
      }
   </button>
 
   <!-- The Physical Console Shell or Full Screen Container -->
   <div class="relative w-full h-full flex flex-col transition-all duration-300 shadow-2xl overflow-hidden"
        [class.bg-gray-200]="!isFullScreen()"
-       [class.bg-black]="isFullScreen()">
+       [class.bg-black]="isFullScreen()"
+       role="presentation">
     
     <!-- Top Decorative Ridge (Hide in FS) -->
     @if (!isFullScreen()) {
-      <div class="flex-none h-6 w-full flex flex-col gap-1.5 pt-3 px-6 opacity-40">
+      <div class="flex-none h-6 w-full flex flex-col gap-1.5 pt-3 px-6 opacity-40" aria-hidden="true">
          <div class="h-[2px] bg-gray-400 w-full rounded-full"></div>
          <div class="h-[2px] bg-gray-400 w-full rounded-full"></div>
       </div>
@@ -55,13 +57,14 @@
         [dialogueData]="dialogueData()"
         [shopItems]="shopItems()"
         [shopCursor]="shopCursor()"
+        [currentNpc]="currentNpc()"
         [isFullScreen]="isFullScreen()">
       </app-game-screen>
     </div>
 
     <!-- Branding (Hide in FS) -->
     @if (!isFullScreen()) {
-      <div class="flex-none flex justify-center items-center gap-2 mb-1 z-10">
+      <div class="flex-none flex justify-center items-center gap-2 mb-1 z-10" aria-hidden="true">
         <span class="text-[#374151] font-bold italic tracking-wider text-xl sm:text-2xl drop-shadow-sm">GEMINI</span>
         <span class="text-[#374151] font-bold italic tracking-widest text-xl sm:text-2xl drop-shadow-sm">BOY</span>
       </div>
@@ -81,7 +84,7 @@
 
     <!-- Audio Jack (Visual only, Hide in FS) -->
     @if (!isFullScreen()) {
-      <div class="absolute bottom-[-10px] left-8 w-20 h-6 bg-gray-300 rounded-full shadow-inner pointer-events-none"></div>
+      <div class="absolute bottom-[-10px] left-8 w-20 h-6 bg-gray-300 rounded-full shadow-inner pointer-events-none" aria-hidden="true"></div>
     }
 
   </div>
