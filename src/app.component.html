@@ -1,0 +1,34 @@
+<main class="min-h-screen bg-neutral-800 flex items-center justify-center p-4 font-sans select-none overflow-hidden">
+  
+  <!-- The Physical Console Shell -->
+  <div class="relative bg-gray-200 rounded-t-[20px] rounded-b-[40px] shadow-[0_0_50px_rgba(0,0,0,0.5),inset_-5px_-5px_20px_rgba(0,0,0,0.1)] p-4 sm:p-6 w-full max-w-[400px] h-auto border-l-4 border-gray-300 border-b-8 border-gray-300">
+    
+    <!-- Top ridge -->
+    <div class="absolute top-0 left-8 right-8 h-[2px] bg-gray-300 opacity-50"></div>
+    <div class="absolute top-1 left-8 right-8 h-[2px] bg-gray-300 opacity-50"></div>
+
+    <!-- Screen Component -->
+    <app-game-screen
+      [state]="gameState()"
+      [score]="score()"
+      [chunkCoords]="chunkCoords()"
+      [currentChunk]="currentChunk()"
+      [playerPos]="playerPos()"
+      [message]="message()"
+      [powerOn]="powerOn()">
+    </app-game-screen>
+
+    <!-- Brand Text -->
+    <div class="mb-4 mt-2 px-4 flex items-center gap-2">
+      <span class="text-[#306230] font-bold italic tracking-wider text-xl">GEMINI</span>
+      <span class="text-[#306230] font-bold italic tracking-widest text-xl">BOY</span>
+    </div>
+
+    <!-- Controls Component -->
+    <app-game-controls (action)="handleInput($event)"></app-game-controls>
+
+    <!-- Audio Jack (Visual only) -->
+    <div class="absolute bottom-[-10px] left-12 w-16 h-4 bg-gray-300 rounded-full shadow-inner"></div>
+
+  </div>
+</main>
