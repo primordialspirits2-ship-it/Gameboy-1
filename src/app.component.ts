@@ -30,6 +30,9 @@ export class AppComponent {
   message = signal<string>("Initializing...");
   powerOn = signal<boolean>(true);
 
+  // Input handling
+  private lastInputTime = 0;
+
   // Audio System
   private audioCtx: AudioContext | null = null;
 
@@ -130,14 +133,18 @@ export class AppComponent {
     // Otherwise keep current pos (start game) but validate it.
     if (entryPoint) {
       this.playerPos.set(entryPoint);
-      // FORCE VALIDITY: Ensure the tile the player landed on is walkable (0).
-      // This prevents getting stuck when entering a new chunk into a wall.
-      if (chunk.layout[entryPoint.y][entryPoint.x] === 1) {
+      // FORCE VALIDITY: Ensure the tile the player landed on is walkable.
+      // This prevents getting stuck in a wall or dying instantly on a hazard.
+      // 1 = Wall, 2 = Hazard
+      const startCell = Number(chunk.layout[entryPoint.y][entryPoint.x]);
+      if (startCell === 1 || startCell === 2) {
         chunk.layout[entryPoint.y][entryPoint.x] = 0;
       }
     } else {
        // On startup, ensure center is safe
-       if (chunk.layout[4][5] !== 0) chunk.layout[4][5] = 0;
+       if (Number(chunk.layout[4][5]) !== 0) {
+         chunk.layout[4][5] = 0;
+       }
        this.playerPos.set({x: 5, y: 4});
     }
 
@@ -147,6 +154,11 @@ export class AppComponent {
 
   handleInput(key: string) {
     this.initAudio();
+
+    // Simple debounce to prevent double-moves from sensitive touch inputs
+    const now = Date.now();
+    if (now - this.lastInputTime < 100) return; 
+    this.lastInputTime = now;
 
     if (this.gameState() === 'PLAYING') {
       this.handleMovement(key);
@@ -198,7 +210,7 @@ export class AppComponent {
     }
 
     // --- Local Movement Check ---
-    const cellContent = chunk.layout[newY][newX];
+    const cellContent = Number(chunk.layout[newY][newX]);
 
     // 1 = Wall
     if (cellContent === 1) {
@@ -212,7 +224,7 @@ export class AppComponent {
 
     // 2 = Hazard
     if (cellContent === 2) {
-      this.message.set("Critial Damage!");
+      this.message.set("Critical Damage!");
       this.playDieSound();
       this.gameState.set('GAME_OVER');
       return;
@@ -231,6 +243,9 @@ export class AppComponent {
   // Keyboard Listeners
   @HostListener('window:keydown', ['$event'])
   handleKeyboard(event: KeyboardEvent) {
+    // Ignore repeats to prevent super-speed movement
+    if (event.repeat) return;
+
     switch (event.key) {
       case 'ArrowUp': this.handleInput('UP'); break;
       case 'ArrowDown': this.handleInput('DOWN'); break;

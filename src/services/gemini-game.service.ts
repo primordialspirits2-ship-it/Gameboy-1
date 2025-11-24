@@ -37,7 +37,7 @@ export class GeminiGameService {
     - The layout must be a ${height}x${width} integer array.
     - 0: Walkable Floor
     - 1: Wall / Obstacle (Tree, Rock, Building)
-    - 2: Hazard (Spikes, Lava, Water) - Use sparingly.
+    - 2: Hazard (Spikes, Lava) - Use EXTREMELY sparingly. Most chunks should have 0 hazards.
     - 3: Treasure/Loot (Coins, Items) - Place 1 to 3 treasures in hard to reach spots.
     
     - Connectivity: This is an open world. Do not seal off the edges completely. The player must be able to traverse through this chunk to neighbor chunks.
@@ -74,8 +74,8 @@ export class GeminiGameService {
       });
 
       let text = response.text || '{}';
-      // Sanitize: Remove markdown code block syntax if present
-      text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      // Sanitize: Remove markdown code block syntax if present (case insensitive)
+      text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
 
       const json = JSON.parse(text);
       
