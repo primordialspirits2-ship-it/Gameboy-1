@@ -1,9 +1,8 @@
-
 import { Component, signal, inject, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { GameScreenComponent, GameState, ActiveEnemy, CharacterClass } from './components/game-screen.component';
+import { GameScreenComponent, GameState, ActiveEnemy, CharacterClass, InventoryItem, DialogueData } from './components/game-screen.component';
 import { GameControlsComponent } from './components/game-controls.component';
-import { GeminiGameService, WorldChunk, EnemySpawn } from './services/gemini-game.service';
+import { GeminiGameService, WorldChunk, EnemySpawn, NPCSpawn } from './services/gemini-game.service';
 
 interface PlayerStats {
   hp: number;
@@ -30,14 +29,18 @@ export class AppComponent {
 
   // Game State
   gameState = signal<GameState>('BOOT');
+  isFullScreen = signal<boolean>(false);
   
   // World State
-  private worldMap = new Map<string, WorldChunk>();
+  // We use a signal for the map so changes propagate to the GameScreen for rendering
+  worldMap = signal<Map<string, WorldChunk>>(new Map());
+  
   chunkCoords = signal<{x: number, y: number}>({x: 0, y: 0});
   currentChunk = signal<WorldChunk | null>(null);
   
   // Entity State
   enemies = signal<ActiveEnemy[]>([]);
+  npcs = signal<NPCSpawn[]>([]);
   shakeScreen = signal<boolean>(false);
   
   // Player State
@@ -54,6 +57,16 @@ export class AppComponent {
     weapon: 'Fists',
     armor: 'Shirt'
   });
+
+  // Inventory State
+  inventory = signal<InventoryItem[]>([]);
+  inventoryCursor = signal<number>(0);
+
+  // Dialogue & Shop State
+  dialogueData = signal<DialogueData | null>(null);
+  currentNpc = signal<NPCSpawn | null>(null);
+  shopItems = signal<InventoryItem[]>([]);
+  shopCursor = signal<number>(0);
 
   // Class Selection State
   classes: CharacterClass[] = [
@@ -117,6 +130,11 @@ export class AppComponent {
   private playDieSound() { this.playTone(400, 'sawtooth', 0.1, 0); this.playTone(300, 'sawtooth', 0.1, 0.1); this.playTone(200, 'sawtooth', 0.4, 0.2); }
   private playStartSound() { this.playTone(1200, 'square', 0.05); }
   private playMenuSound() { this.playTone(440, 'square', 0.05, 0, 0.05); }
+  private playTalkSound() { this.playTone(300, 'square', 0.03, 0, 0.05); this.playTone(350, 'square', 0.03, 0.05, 0.05); }
+
+  toggleFullScreen() {
+     this.isFullScreen.update(v => !v);
+  }
 
   // --- GAME LOGIC ---
 
@@ -125,7 +143,12 @@ export class AppComponent {
     this.stepsTaken = 0;
     this.chunkCoords.set({x: 0, y: 0});
     this.playerPos.set({x: 5, y: 4});
-    this.worldMap.clear();
+    
+    // Clear and reset map with immutable update
+    this.worldMap.set(new Map());
+    
+    this.inventory.set([]); // Reset inventory
+    this.inventoryCursor.set(0);
     
     // Set stats from selected class
     const cls = this.classes[this.selectedClassIdx()];
@@ -142,8 +165,10 @@ export class AppComponent {
 
   async loadChunk(x: number, y: number, entryPoint?: {x: number, y: number}) {
     const key = `${x},${y}`;
-    if (this.worldMap.has(key)) {
-      this.setChunkActive(x, y, this.worldMap.get(key)!, entryPoint);
+    const currentMap = this.worldMap();
+    
+    if (currentMap.has(key)) {
+      this.setChunkActive(x, y, currentMap.get(key)!, entryPoint);
       return;
     }
 
@@ -152,7 +177,14 @@ export class AppComponent {
     
     try {
       const chunk = await this.geminiService.generateChunk(x, y);
-      this.worldMap.set(key, chunk);
+      
+      // Update world map signal
+      this.worldMap.update(map => {
+        const newMap = new Map(map);
+        newMap.set(key, chunk);
+        return newMap;
+      });
+
       this.setChunkActive(x, y, chunk, entryPoint);
     } catch (e) {
       console.error(e);
@@ -202,6 +234,7 @@ export class AppComponent {
     });
     
     this.enemies.set(safeEnemies);
+    this.npcs.set(chunk.npcs || []);
     this.message.set(chunk.flavorText);
     this.gameState.set('PLAYING');
   }
@@ -233,10 +266,34 @@ export class AppComponent {
     if (now - this.lastInputTime < 130) return; // Debounce
     this.lastInputTime = now;
 
+    // Global Menus
+    if (key === 'SELECT') {
+      if (this.gameState() === 'PLAYING') {
+         this.gameState.set('MAP');
+         this.playMenuSound();
+         return;
+      } else if (this.gameState() === 'MAP') {
+         this.gameState.set('PLAYING');
+         this.playMenuSound();
+         return;
+      }
+    }
+
     if (this.gameState() === 'CLASS_SELECT') {
        this.handleClassMenuInput(key);
     } else if (this.gameState() === 'PLAYING') {
-      this.handlePlayerTurn(key);
+       this.handlePlayerTurn(key);
+    } else if (this.gameState() === 'INVENTORY') {
+       this.handleInventoryInput(key);
+    } else if (this.gameState() === 'DIALOGUE') {
+       this.handleDialogueInput(key);
+    } else if (this.gameState() === 'SHOP') {
+       this.handleShopInput(key);
+    } else if (this.gameState() === 'MAP') {
+       if (key === 'B' || key === 'START') {
+         this.gameState.set('PLAYING');
+         this.playMenuSound();
+       }
     } else if (this.gameState() === 'GAME_OVER' && key === 'START') {
       this.gameState.set('CLASS_SELECT');
       this.playBootSound();
@@ -256,6 +313,175 @@ export class AppComponent {
      }
   }
 
+  // --- INVENTORY LOGIC ---
+  handleInventoryInput(key: string) {
+     const inv = this.inventory();
+     if (key === 'B' || key === 'START') {
+         this.gameState.set('PLAYING');
+         this.playMenuSound();
+     } else if (key === 'UP') {
+         this.inventoryCursor.update(c => Math.max(0, c - 1));
+         this.playMenuSound();
+     } else if (key === 'DOWN') {
+         this.inventoryCursor.update(c => Math.min(inv.length - 1, c + 1));
+         this.playMenuSound();
+     } else if (key === 'A') {
+         if (inv.length > 0) {
+             this.useItem(inv[this.inventoryCursor()]);
+         }
+     }
+  }
+
+  addItemToInventory(item: InventoryItem) {
+     this.inventory.update(inv => {
+         const existing = inv.find(i => i.type === item.type);
+         if (existing) {
+             existing.count++;
+             return [...inv];
+         } else {
+             return [...inv, item];
+         }
+     });
+     this.message.set(`Got ${item.name}!`);
+  }
+
+  useItem(item: InventoryItem) {
+     let used = false;
+     if (item.type === 'POTION_HP') {
+         if (this.playerStats().hp < this.playerStats().maxHp) {
+             this.playerStats.update(s => ({ ...s, hp: Math.min(s.maxHp, s.hp + 5) }));
+             this.message.set("Restored HP!");
+             this.playCoinSound();
+             used = true;
+         } else {
+             this.message.set("HP is full.");
+             this.playBumpSound();
+         }
+     } else if (item.type === 'POTION_MP') {
+         if (this.playerStats().mp < this.playerStats().maxMp) {
+             this.playerStats.update(s => ({ ...s, mp: Math.min(s.maxMp, s.mp + 5) }));
+             this.message.set("Restored MP!");
+             this.playCoinSound();
+             used = true;
+         } else {
+             this.message.set("MP is full.");
+             this.playBumpSound();
+         }
+     } else if (item.type === 'ELIXIR') {
+         this.playerStats.update(s => ({ ...s, hp: s.maxHp, mp: s.maxMp }));
+         this.message.set("Fully Restored!");
+         this.playMagicSound();
+         used = true;
+     }
+
+     if (used) {
+         this.inventory.update(inv => {
+             item.count--;
+             if (item.count <= 0) {
+                 return inv.filter(i => i !== item);
+             }
+             return [...inv];
+         });
+         // Adjust cursor if last item removed
+         if (this.inventory().length <= this.inventoryCursor()) {
+             this.inventoryCursor.set(Math.max(0, this.inventory().length - 1));
+         }
+     }
+  }
+
+  // --- DIALOGUE & SHOP SYSTEM ---
+  async startDialogue(npc: NPCSpawn) {
+     this.playTalkSound();
+     this.currentNpc.set(npc);
+     this.gameState.set('DIALOGUE');
+     
+     // Set initial greeting while fetching real dialogue
+     this.dialogueData.set({
+        npcName: npc.name,
+        text: npc.greeting || "Hello there.",
+        isShopkeeper: npc.role === 'SHOPKEEPER'
+     });
+
+     // Fetch dynamic dialogue from AI
+     const playerClass = this.classes[this.selectedClassIdx()].name;
+     const biome = this.currentChunk()?.biomeName || 'Unknown';
+     
+     try {
+        const text = await this.geminiService.generateDialogue(npc, playerClass, biome);
+        this.dialogueData.set({
+           npcName: npc.name,
+           text: text,
+           isShopkeeper: npc.role === 'SHOPKEEPER'
+        });
+     } catch (e) {
+        // Fallback handled by keeping greeting
+     }
+  }
+
+  handleDialogueInput(key: string) {
+     const npc = this.currentNpc();
+     if (key === 'A') {
+        if (npc?.role === 'SHOPKEEPER') {
+           this.openShop(npc);
+        } else {
+           this.gameState.set('PLAYING');
+        }
+     } else if (key === 'B') {
+        this.gameState.set('PLAYING');
+     }
+  }
+
+  openShop(npc: NPCSpawn) {
+     this.playCoinSound();
+     this.gameState.set('SHOP');
+     // Generate Shop Inventory based on level
+     const level = this.playerStats().level;
+     const items: InventoryItem[] = [
+        { id: 'shop1', name: 'HP Potion', type: 'POTION_HP', desc: 'Heals 5 HP', count: 1, cost: 25 },
+        { id: 'shop2', name: 'MP Potion', type: 'POTION_MP', desc: 'Restores 5 MP', count: 1, cost: 30 }
+     ];
+     
+     if (level >= 3) {
+        items.push({ id: 'shop3', name: 'Elixir', type: 'ELIXIR', desc: 'Full Restore', count: 1, cost: 100 });
+     }
+     
+     this.shopItems.set(items);
+     this.shopCursor.set(0);
+  }
+
+  handleShopInput(key: string) {
+     if (key === 'B' || key === 'START') {
+        this.gameState.set('PLAYING');
+        this.playMenuSound();
+        return;
+     }
+
+     if (key === 'UP') {
+        this.shopCursor.update(c => Math.max(0, c - 1));
+        this.playMenuSound();
+     } else if (key === 'DOWN') {
+        this.shopCursor.update(c => Math.min(this.shopItems().length - 1, c + 1));
+        this.playMenuSound();
+     } else if (key === 'A') {
+        this.buyItem(this.shopItems()[this.shopCursor()]);
+     }
+  }
+
+  buyItem(item: InventoryItem) {
+     if (!item.cost) return;
+
+     if (this.score() >= item.cost) {
+        this.score.update(s => s - item.cost!);
+        this.addItemToInventory({ ...item, count: 1 });
+        this.playCoinSound();
+        this.message.set("Bought " + item.name);
+     } else {
+        this.playBumpSound();
+        this.message.set("Not enough gold!");
+     }
+  }
+
+
   // --- COMBAT & MOVEMENT ---
 
   handlePlayerTurn(key: string) {
@@ -266,15 +492,30 @@ export class AppComponent {
       case 'DOWN': dy = 1; break;
       case 'LEFT': dx = -1; break;
       case 'RIGHT': dx = 1; break;
-      case 'A': this.castAbility(); return; // Use Ability
+      case 'A': 
+         // Check interaction
+         const facingX = pos.x + (this.lastMoveX || 0);
+         const facingY = pos.y + (this.lastMoveY || 1);
+         if (!this.tryInteract(facingX, facingY)) {
+             this.castAbility();
+         }
+         return; 
+      case 'B': this.gameState.set('INVENTORY'); this.playMenuSound(); return;
       case 'START': this.message.set("Paused"); this.playStartSound(); return;
       default: return;
     }
+
+    // Keep track of facing direction for interaction
+    this.lastMoveX = dx;
+    this.lastMoveY = dy;
 
     const tx = pos.x + dx;
     const ty = pos.y + dy;
     const chunk = this.currentChunk();
     if (!chunk) return;
+
+    // 0. Check Interaction with NPC (Bump to talk)
+    if (this.tryInteract(tx, ty)) return;
 
     // 1. Check Map Bounds (Transition)
     if (tx < 0 || tx >= chunk.width || ty < 0 || ty >= chunk.height) {
@@ -283,7 +524,7 @@ export class AppComponent {
     }
 
     // 2. Check Walls
-    if (chunk.layout[ty][tx] === 1) {
+    if (chunk.layout[ty][tx] === 1 || chunk.layout[ty][tx] === 5) {
       this.playBumpSound();
       return;
     }
@@ -314,6 +555,18 @@ export class AppComponent {
 
     // 6. Enemies Move
     this.processEnemyTurns();
+  }
+
+  private lastMoveX = 0;
+  private lastMoveY = 0;
+
+  tryInteract(x: number, y: number): boolean {
+     const npc = this.npcs().find(n => n.x === x && n.y === y);
+     if (npc) {
+        this.startDialogue(npc);
+        return true;
+     }
+     return false;
   }
 
   applyRegen() {
@@ -475,10 +728,12 @@ export class AppComponent {
   isWalkable(x: number, y: number): boolean {
     const chunk = this.currentChunk();
     if (!chunk) return false;
-    // Walls
-    if (chunk.layout[y][x] === 1) return false;
+    // Walls or Buildings
+    if (chunk.layout[y][x] === 1 || chunk.layout[y][x] === 5) return false;
     // Other enemies
     if (this.enemies().some(e => e.x === x && e.y === y)) return false;
+    // NPCs
+    if (this.npcs().some(n => n.x === x && n.y === y)) return false;
     // Player
     if (this.playerPos().x === x && this.playerPos().y === y) return false;
     return true;
@@ -513,12 +768,22 @@ export class AppComponent {
      }
      
      const roll = Math.random();
-     if (roll < 0.33) {
-        this.playerStats.update(s => ({ ...s, hp: Math.min(s.maxHp, s.hp + 2) }));
-        this.message.set("Found Health Potion!");
-     } else if (roll < 0.66) {
-        this.playerStats.update(s => ({ ...s, mp: Math.min(s.maxMp, s.mp + 3) }));
-        this.message.set("Found Mana Potion!");
+     if (roll < 0.35) {
+        this.addItemToInventory({ 
+            id: crypto.randomUUID(), 
+            name: 'Potion', 
+            type: 'POTION_HP', 
+            desc: 'Restores HP', 
+            count: 1 
+        });
+     } else if (roll < 0.7) {
+        this.addItemToInventory({ 
+            id: crypto.randomUUID(), 
+            name: 'Ether', 
+            type: 'POTION_MP', 
+            desc: 'Restores MP', 
+            count: 1 
+        });
      } else {
         this.message.set("Found Knowledge Orb!");
         this.gainXp(25);
@@ -538,13 +803,13 @@ export class AppComponent {
     const tier = Math.min(3, Math.floor(this.playerStats().level / 2));
 
     if (roll < 0.25) {
-       // Elixir
-       this.playerStats.update(s => ({ 
-          ...s, 
-          hp: s.maxHp, 
-          mp: s.maxMp 
-       }));
-       this.message.set("Found Elixir! Fully Restored.");
+       this.addItemToInventory({ 
+           id: crypto.randomUUID(), 
+           name: 'Elixir', 
+           type: 'ELIXIR', 
+           desc: 'Fully restores status.', 
+           count: 1 
+       });
     } else if (roll < 0.6) {
       // Weapon Upgrade
       let newWep = '';
@@ -614,7 +879,9 @@ export class AppComponent {
       case 'ArrowLeft': this.handleInput('LEFT'); break;
       case 'ArrowRight': this.handleInput('RIGHT'); break;
       case 'Enter': this.handleInput('START'); break;
+      case 'Shift': this.handleInput('SELECT'); break; // Map shortcut
       case 'z': case 'Z': this.handleInput('A'); break;
+      case 'x': case 'X': this.handleInput('B'); break;
     }
   }
 }

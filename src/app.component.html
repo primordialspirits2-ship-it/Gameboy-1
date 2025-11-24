@@ -1,47 +1,88 @@
 
-<main class="h-screen w-screen bg-neutral-900 flex flex-col overflow-hidden font-sans select-none touch-none">
-  
-  <!-- The Physical Console Shell: Fills the viewport -->
-  <div class="relative w-full h-full bg-gray-200 flex flex-col shadow-2xl overflow-hidden">
-    
-    <!-- Top Decorative Ridge -->
-    <div class="flex-none h-6 w-full flex flex-col gap-1.5 pt-3 px-6 opacity-40">
-       <div class="h-[2px] bg-gray-400 w-full rounded-full"></div>
-       <div class="h-[2px] bg-gray-400 w-full rounded-full"></div>
-    </div>
 
-    <!-- Screen Section: Expands to fill available space -->
-    <div class="flex-1 min-h-0 p-4 pb-2 flex flex-col items-center justify-center w-full max-w-3xl mx-auto">
+<main class="h-screen w-screen flex flex-col overflow-hidden font-sans select-none touch-none"
+      [class.bg-neutral-900]="!isFullScreen()"
+      [class.bg-black]="isFullScreen()">
+
+  <!-- Full Screen Toggle (Floating) -->
+  <button class="absolute top-2 right-2 z-50 text-white/40 hover:text-white p-2 transition-colors rounded-full bg-black/20"
+          (click)="toggleFullScreen()">
+     @if(isFullScreen()) {
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+     } @else {
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+     }
+  </button>
+
+  <!-- The Physical Console Shell or Full Screen Container -->
+  <div class="relative w-full h-full flex flex-col transition-all duration-300 shadow-2xl overflow-hidden"
+       [class.bg-gray-200]="!isFullScreen()"
+       [class.bg-black]="isFullScreen()">
+    
+    <!-- Top Decorative Ridge (Hide in FS) -->
+    @if (!isFullScreen()) {
+      <div class="flex-none h-6 w-full flex flex-col gap-1.5 pt-3 px-6 opacity-40">
+         <div class="h-[2px] bg-gray-400 w-full rounded-full"></div>
+         <div class="h-[2px] bg-gray-400 w-full rounded-full"></div>
+      </div>
+    }
+
+    <!-- Screen Section -->
+    <div class="flex-1 min-h-0 flex flex-col items-center justify-center w-full mx-auto"
+         [class.p-4]="!isFullScreen()"
+         [class.pb-2]="!isFullScreen()"
+         [class.max-w-3xl]="!isFullScreen()">
       <app-game-screen
-        class="w-full h-full block"
+        class="block"
+        [class.w-full]="true"
+        [class.h-full]="true"
         [state]="gameState()"
         [score]="score()"
         [chunkCoords]="chunkCoords()"
         [currentChunk]="currentChunk()"
+        [worldMap]="worldMap()"
         [playerPos]="playerPos()"
         [message]="message()"
         [powerOn]="powerOn()"
         [playerStats]="playerStats()"
         [enemies]="enemies()"
+        [npcs]="npcs()"
         [shakeScreen]="shakeScreen()"
         [availableClasses]="classes"
-        [selectedClassIdx]="selectedClassIdx()">
+        [selectedClassIdx]="selectedClassIdx()"
+        [inventory]="inventory()"
+        [inventoryCursor]="inventoryCursor()"
+        [dialogueData]="dialogueData()"
+        [shopItems]="shopItems()"
+        [shopCursor]="shopCursor()"
+        [isFullScreen]="isFullScreen()">
       </app-game-screen>
     </div>
 
-    <!-- Branding -->
-    <div class="flex-none flex justify-center items-center gap-2 mb-1 z-10">
-      <span class="text-[#374151] font-bold italic tracking-wider text-xl sm:text-2xl drop-shadow-sm">GEMINI</span>
-      <span class="text-[#374151] font-bold italic tracking-widest text-xl sm:text-2xl drop-shadow-sm">BOY</span>
-    </div>
+    <!-- Branding (Hide in FS) -->
+    @if (!isFullScreen()) {
+      <div class="flex-none flex justify-center items-center gap-2 mb-1 z-10">
+        <span class="text-[#374151] font-bold italic tracking-wider text-xl sm:text-2xl drop-shadow-sm">GEMINI</span>
+        <span class="text-[#374151] font-bold italic tracking-widest text-xl sm:text-2xl drop-shadow-sm">BOY</span>
+      </div>
+    }
 
-    <!-- Controls Section: Fixed at bottom -->
-    <div class="flex-none pb-6 sm:pb-10 w-full flex justify-center bg-gray-200 z-10">
+    <!-- Controls Section: Fixed at bottom for Console, Overlay for FullScreen -->
+    <div class="flex-none w-full flex justify-center z-40 transition-all duration-300"
+         [class.pb-6]="!isFullScreen()"
+         [class.sm:pb-10]="!isFullScreen()"
+         [class.bg-gray-200]="!isFullScreen()"
+         [class.absolute]="isFullScreen()"
+         [class.bottom-4]="isFullScreen()"
+         [class.opacity-50]="isFullScreen()"
+         [class.hover:opacity-100]="isFullScreen()">
       <app-game-controls (action)="handleInput($event)"></app-game-controls>
     </div>
 
-    <!-- Audio Jack (Visual only) -->
-    <div class="absolute bottom-[-10px] left-8 w-20 h-6 bg-gray-300 rounded-full shadow-inner pointer-events-none"></div>
+    <!-- Audio Jack (Visual only, Hide in FS) -->
+    @if (!isFullScreen()) {
+      <div class="absolute bottom-[-10px] left-8 w-20 h-6 bg-gray-300 rounded-full shadow-inner pointer-events-none"></div>
+    }
 
   </div>
 </main>
